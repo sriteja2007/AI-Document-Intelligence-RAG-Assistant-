@@ -21,3 +21,4 @@
 5. **Autonomous Code Maintenance**: Never ask the user to edit code by hand. If something needs fixing, fix it directly.
 6. **Self-Verification**: Run and test your own work before declaring it done, and fix any errors found.
 7. **Phased Development**: Do not build features outside the current phase.
+8. All UI must follow .agent/rules/design.md.
