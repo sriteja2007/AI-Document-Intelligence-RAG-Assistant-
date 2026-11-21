@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu, Triangle } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { createClient } from "@/lib/supabase/client";
 
 export interface TopNavProps {
   variant?: "landing" | "app";
@@ -26,7 +29,63 @@ export interface TopNavProps {
 }
 
 export function TopNav({ variant = "landing", user }: TopNavProps) {
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    name?: string;
+    email?: string;
+    avatarUrl?: string;
+  } | null>(user || null);
+
+  useEffect(() => {
+    if (user) {
+      setCurrentUser(user);
+      return;
+    }
+
+    if (variant === "app") {
+      const supabase = createClient();
+
+      supabase.auth.getUser().then(({ data: { user: authUser } }) => {
+        if (authUser) {
+          const email = authUser.email ?? "";
+          const name =
+            (authUser.user_metadata?.full_name as string) ||
+            (authUser.user_metadata?.name as string) ||
+            email.split("@")[0] ||
+            "User";
+          setCurrentUser({ email, name });
+        }
+      });
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          const email = session.user.email ?? "";
+          const name =
+            (session.user.user_metadata?.full_name as string) ||
+            (session.user.user_metadata?.name as string) ||
+            email.split("@")[0] ||
+            "User";
+          setCurrentUser({ email, name });
+        } else {
+          setCurrentUser(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [user, variant]);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   const navLinks = [
     { label: "Home", href: "/" },
@@ -34,6 +93,10 @@ export function TopNav({ variant = "landing", user }: TopNavProps) {
     { label: "Features", href: "#features" },
     { label: "FAQ", href: "#faq" },
   ];
+
+  const userEmail = currentUser?.email || "user@example.com";
+  const userName = currentUser?.name || (currentUser?.email ? currentUser.email.split("@")[0] : "User");
+  const userInitial = userEmail.length > 0 ? userEmail[0].toUpperCase() : "U";
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-nav h-16 transition-colors">
@@ -154,7 +217,7 @@ export function TopNav({ variant = "landing", user }: TopNavProps) {
             </>
           ) : (
             <>
-              {/* App Variant Right Side: Theme Toggle & User Avatar */}
+              {/* App Variant Right Side: Theme Toggle & Real User Avatar */}
               <ThemeToggle />
 
               <DropdownMenu>
@@ -167,11 +230,11 @@ export function TopNav({ variant = "landing", user }: TopNavProps) {
                     >
                       <Avatar className="h-9 w-9 border border-white/10">
                         <AvatarImage
-                          src={user?.avatarUrl}
-                          alt={user?.name || "User"}
+                          src={currentUser?.avatarUrl}
+                          alt={userName}
                         />
                         <AvatarFallback className="bg-purple-950/80 text-purple-200 text-xs font-semibold">
-                          {user?.name ? user.name.slice(0, 2).toUpperCase() : "DM"}
+                          {userInitial}
                         </AvatarFallback>
                       </Avatar>
                     </Button>
@@ -181,16 +244,18 @@ export function TopNav({ variant = "landing", user }: TopNavProps) {
                   className="glass-panel w-56 border-white/10 text-zinc-100"
                   align="end"
                 >
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                        {user?.name || "Demo User"}
-                      </p>
-                      <p className="text-xs leading-none text-zinc-400">
-                        {user?.email || "user@example.com"}
-                      </p>
-                    </div>
-                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none truncate max-w-[200px]">
+                          {userName}
+                        </p>
+                        <p className="text-xs leading-none text-zinc-400 truncate max-w-[200px]">
+                          {userEmail}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator className="bg-white/10" />
                   <DropdownMenuItem className="text-xs cursor-pointer hover:bg-white/10">
                     <Link href="/dashboard" className="w-full">
@@ -198,12 +263,15 @@ export function TopNav({ variant = "landing", user }: TopNavProps) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem className="text-xs cursor-pointer hover:bg-white/10">
-                    <Link href="/settings" className="w-full">
-                      Settings
+                    <Link href="/chat/new" className="w-full">
+                      New chat
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-white/10" />
-                  <DropdownMenuItem className="text-xs text-rose-400 cursor-pointer hover:bg-rose-500/10">
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="text-xs text-rose-400 cursor-pointer hover:bg-rose-500/10 focus:bg-rose-500/10 focus:text-rose-400"
+                  >
                     Log out
                   </DropdownMenuItem>
                 </DropdownMenuContent>

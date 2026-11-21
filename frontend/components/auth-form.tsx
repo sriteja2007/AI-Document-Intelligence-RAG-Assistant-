@@ -3,10 +3,12 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Triangle, Loader2, Eye, EyeOff } from "lucide-react";
+import { Triangle, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 import { GlassCard } from "@/components/glass-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
 
 interface AuthFormProps {
   mode: "login" | "signup";
@@ -21,6 +23,8 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverSuccess, setServerSuccess] = useState<string | null>(null);
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -48,23 +52,91 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setServerError(null);
+    setServerSuccess(null);
+
     if (!validate()) return;
 
     setIsLoading(true);
+    const supabase = createClient();
 
-    // Simulated network authentication delay
-    setTimeout(() => {
+    try {
+      if (isLogin) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+        if (error) {
+          const rawMsg = error.message.toLowerCase();
+          if (
+            rawMsg.includes("invalid login credentials") ||
+            rawMsg.includes("invalid_grant") ||
+            error.status === 400
+          ) {
+            setServerError("Wrong email or password. Please check your credentials and try again.");
+          } else if (rawMsg.includes("email not confirmed")) {
+            setServerError("Please verify your email address before logging in.");
+          } else {
+            setServerError(error.message);
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        if (data.user) {
+          toast.success("Signed in successfully!");
+          router.push("/dashboard");
+          router.refresh();
+        }
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+
+        if (error) {
+          const rawMsg = error.message.toLowerCase();
+          if (
+            rawMsg.includes("user already registered") ||
+            rawMsg.includes("already registered") ||
+            rawMsg.includes("already exists")
+          ) {
+            setServerError("This email is already registered. Please log in instead.");
+          } else if (rawMsg.includes("password should be at least")) {
+            setServerError("Password must be at least 8 characters long.");
+          } else {
+            setServerError(error.message);
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        if (data.session) {
+          // Immediately signed in (if email confirmation is not required)
+          toast.success("Account created successfully!");
+          router.push("/dashboard");
+          router.refresh();
+        } else if (data.user) {
+          // Supabase project requires email confirmation
+          setServerSuccess(
+            "Account created! Please check your email to verify your account, then log in."
+          );
+          setIsLoading(false);
+        }
+      }
+    } catch (err: unknown) {
+      const errMessage = err instanceof Error ? err.message : "An unexpected error occurred. Please try again.";
+      setServerError(errMessage);
       setIsLoading(false);
-      router.push("/dashboard");
-    }, 1000);
+    }
   };
 
   const handleGoogleAuth = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      router.push("/dashboard");
-    }, 800);
+    toast.info("Google login coming soon");
   };
 
   return (
@@ -96,6 +168,22 @@ export function AuthForm({ mode }: AuthFormProps) {
               : "Start asking questions grounded in your documents"}
           </p>
         </div>
+
+        {/* Server Error Alert */}
+        {serverError && (
+          <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300 text-xs sm:text-sm flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+            <span>{serverError}</span>
+          </div>
+        )}
+
+        {/* Server Success Alert */}
+        {serverSuccess && (
+          <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs sm:text-sm flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+            <span>{serverSuccess}</span>
+          </div>
+        )}
 
         {/* Visual-only "Continue with Google" Button */}
         <button
@@ -151,6 +239,7 @@ export function AuthForm({ mode }: AuthFormProps) {
               onChange={(e) => {
                 setEmail(e.target.value);
                 if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+                if (serverError) setServerError(null);
               }}
               disabled={isLoading}
               className={`h-11 rounded-xl bg-zinc-50 dark:bg-white/5 border text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 text-sm focus-visible:ring-purple-500/40 ${
@@ -190,6 +279,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                   if (errors.password) {
                     setErrors((prev) => ({ ...prev, password: undefined }));
                   }
+                  if (serverError) setServerError(null);
                 }}
                 disabled={isLoading}
                 className={`h-11 rounded-xl bg-zinc-50 dark:bg-white/5 border pr-10 text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500 text-sm focus-visible:ring-purple-500/40 ${

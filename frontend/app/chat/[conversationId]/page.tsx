@@ -159,10 +159,6 @@ function ChatConversationContent() {
   return (
     <PageLayout
       variant="app"
-      user={{
-        name: "Alex Mercer",
-        email: "alex.mercer@enterprise.io",
-      }}
     >
       <div className="flex-1 flex h-[calc(100dvh-4rem)] overflow-hidden relative">
         {/* DESKTOP LEFT SIDEBAR */}
