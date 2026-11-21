@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+pymupdf
+python-docx
+supabase
+google-genai
+pydantic-settings
+python-jose
+tiktoken
