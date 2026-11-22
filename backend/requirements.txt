@@ -8,3 +8,4 @@ google-genai
 pydantic-settings
 python-jose
 tiktoken
+pytest

@@ -355,3 +355,76 @@ def delete_document(
         message=f"Document '{doc['name']}' deleted successfully.",
         id=document_id,
     )
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    response_model=DocumentResponse,
+    summary="Reprocess a failed document",
+)
+def reprocess_document(
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: UserResponse = Depends(get_current_user),
+) -> DocumentResponse:
+    """Reprocess a failed document in the background.
+
+    Only accessible by the document owner and only when document status is 'failed'.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        res = (
+            supabase.table("documents")
+            .select("*")
+            .eq("id", document_id)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        if not res.data or len(res.data) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found.",
+            )
+        doc = res.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch document: {str(e)}",
+        )
+
+    if doc.get("status") != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only failed documents can be reprocessed.",
+        )
+
+    # Reset status to 'processing' and clear error_message
+    try:
+        update_res = (
+            supabase.table("documents")
+            .update({"status": "processing", "error_message": None})
+            .eq("id", document_id)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        if not update_res.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update document status for reprocessing.",
+            )
+        updated_doc = update_res.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset document status: {str(e)}",
+        )
+
+    # Enqueue background pipeline task
+    background_tasks.add_task(process_document, document_id)
+
+    return DocumentResponse(**updated_doc)
