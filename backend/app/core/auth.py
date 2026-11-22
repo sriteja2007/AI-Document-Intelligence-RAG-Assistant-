@@ -5,29 +5,12 @@ from jose import JWTError, jwt
 from supabase import Client, create_client
 
 from app.core.config import settings
+from app.core.supabase import get_supabase_client
 from app.models.user import UserResponse
 
 # HTTPBearer scheme configured not to raise automatic 403 on missing credentials,
 # allowing us to return an explicit 401 Unauthorized per project requirements.
 security = HTTPBearer(auto_error=False)
-
-_supabase_client: Optional[Client] = None
-
-
-def get_supabase_client() -> Client:
-    """Lazily initialize and return the Supabase client."""
-    global _supabase_client
-    if _supabase_client is None:
-        if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Supabase credentials are not configured in backend/.env",
-            )
-        _supabase_client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY,
-        )
-    return _supabase_client
 
 
 async def get_current_user(

@@ -2,7 +2,7 @@ from typing import Dict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import users
+from app.routers import documents, users
 
 app = FastAPI(
     title="AI Document Intelligence API",
@@ -26,6 +26,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(users.router)
+app.include_router(documents.router)
 
 
 @app.get("/health", response_model=Dict[str, str], tags=["Health"])
